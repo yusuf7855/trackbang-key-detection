@@ -12,7 +12,7 @@ build/
 # Data — büyük dosyalar repoya girmesin
 data/raw/
 data/processed/
-data/labels.csv
+# labels.csv ve tracks.csv repoda (akademik döküman için)
 
 # Model ağırlıkları — LFS veya ayrı arşiv
 models/*.h5
