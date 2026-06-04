@@ -51,6 +51,66 @@ tahmin eden uçtan uca bir Derin Sinir Ağı sistemi geliştirilmiştir.
 
 ---
 
+## 🤝 Hibrit Zeka Metodolojisi
+
+> Bu proje, **insan uzmanlığı** ile **yapay zekanın** birbirini tamamladığı bir hibrit zeka sürecinin ürünüdür.
+
+### İnsan Katkısı (Yusuf Kerim Sarıtaş)
+
+| Alan | Katkı |
+|------|-------|
+| **Alan Uzmanlığı** | 7+ yıllık DJ deneyimi; Camelot sistemi, harmonik karışım ve BPM enerji eğrisi bilgisi |
+| **Problem Tanımı** | Spotify'ın API kapatmasıyla oluşan boşluğun tespit edilmesi ve çözüm mimarisi |
+| **Veri Küratörlüğü** | 3.817 parçanın uzman DJ'lerle doğrulanması; etiket kalite kontrolü |
+| **Gerçek Dünya Entegrasyonu** | Modelin canlı bir iOS/Android uygulamasına (TrackBang) entegre edilmesi |
+| **Değerlendirme** | Müzikal bilgiyle model çıktılarının doğruluğunu insan kulağıyla test etme |
+
+### Yapay Zeka Katkısı (Claude — Anthropic)
+
+| Alan | Katkı |
+|------|-------|
+| **Mimari Tasarım** | Residual CNN + Squeeze-and-Excitation attention bloklarının önerilmesi |
+| **Kod Üretimi** | `model.py`, `feature_extraction.py`, `train.py` iskeletinin oluşturulması |
+| **Hata Ayıklama** | Keras 3.x `class_weight` kısıtlamasının `sample_weight`'e dönüştürülmesi |
+| **Özellik Mühendisliği** | HPSS + Chroma CENS kombinasyonunun literatürle karşılaştırmalı seçimi |
+| **Augmentasyon** | `np.roll` ile pitch-shift augmentasyonunun chroma alanında matematiksel olarak doğru uygulanması |
+| **Dashboard** | SSE tabanlı gerçek zamanlı eğitim izleme arayüzü |
+
+### Hibrit Süreç Akışı
+
+```
+İnsan (Domain Uzmanı)          Yapay Zeka (Mühendis)
+        │                               │
+        │  "BPM ve key aynı anda        │
+        │   tahmin edilmeli"            │
+        │──────────────────────────────▶│
+        │                   Multi-output mimari tasarladı
+        │◀──────────────────────────────│
+        │                               │
+        │  "Perküsif sesler             │
+        │   key'i bozuyor"             │
+        │──────────────────────────────▶│
+        │                   HPSS + CENS önerdi
+        │◀──────────────────────────────│
+        │                               │
+        │  "Model production'da         │
+        │   çalışmalı"                  │
+        │──────────────────────────────▶│
+        │                   FastAPI + PM2 deploy pipeline
+        │◀──────────────────────────────│
+        │                               │
+        ▼                               ▼
+   3.817 etiketli veri          Çalışan model kodu
+   Domain validation            Production deployment
+        │                               │
+        └───────────┬───────────────────┘
+                    ▼
+          trackbang.com/analyze
+          (Canlı, kullanıma açık)
+```
+
+---
+
 ## Neden Bu Problem?
 
 DJ'ler 2 saatlik bir set için **3–5 saat** manuel tarama yapar:
@@ -151,7 +211,19 @@ C# Minör   █████            83
 | Model boyutu | 4.4 MB |
 | Rastgele tahmin baseline | %4.2 |
 
-> v2 model eğitimi devam etmektedir. HPSS + Residual + SE iyileştirmeleriyle **%45–55** hedeflenmektedir.
+> v2 model eğitimi aktif olarak devam etmektedir (Haziran 2025).
+
+### v2 Eğitim İlerlemesi (Canlı)
+
+| Epoch | Val Key Acc | Val BPM MAE | Durum |
+|-------|------------|-------------|-------|
+| 1/120 | %2.7 | 0.192 BPM | ✓ |
+| 3/120 | %14.0 | 0.167 BPM | ✓ |
+| 6/120 | %16.7 | 0.062 BPM | ✓ |
+| **7/120** | **%22.5** | **0.119 BPM** | **✓ En iyi** |
+| 8–120 | devam ediyor… | — | 🔄 |
+
+> Hedef: **%45–55** key accuracy. BPM tarafı çok erken olgunlaştı (0.062 MAE ≈ ±4 BPM hassasiyet).
 
 ---
 
@@ -309,6 +381,22 @@ trackbang-key-detection/
 | BPM Loss | MSE |
 | Loss Ağırlıkları | key=1.0, bpm=0.05 |
 | Sınıf Ağırlığı | Inverse-frequency |
+
+---
+
+## 🌐 Canlı Deployment
+
+Bu proje yalnızca akademik bir çalışma değil — **production'da aktif olarak çalışmaktadır.**
+
+| Bileşen | URL / Detay |
+|---------|------------|
+| **Web Uygulaması** | [trackbang.com/analyze](https://trackbang.com/analyze) |
+| **iOS Uygulaması** | [App Store — TrackBang](https://apps.apple.com/app/trackbang/id6738064710) |
+| **Android Uygulaması** | [Google Play — TrackBang](https://play.google.com/store/apps/details?id=com.trackbang.app) |
+| **Backend API** | `POST https://api.trackbangserver.com/api/analyze/upload` |
+| **Model Sunucu** | FastAPI + Uvicorn, PM2 ile yönetilen (72.62.63.184) |
+
+> Herhangi bir kullanıcı giriş yapmadan [trackbang.com/analyze](https://trackbang.com/analyze) adresinden MP3 yükleyerek bu modeli test edebilir.
 
 ---
 

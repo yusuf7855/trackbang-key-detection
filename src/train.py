@@ -149,7 +149,9 @@ def compute_class_weights(rows: List[dict]) -> dict:
     for i, (k, w) in enumerate(sorted(weights.items(), key=lambda x: -x[1])[:5]):
         print(f"  {KEY_CLASSES[k]:<14}: {w:.3f}")
 
-    return {"key_output": weights}
+    # Keras 3.x make_class_weight_map_fn sadece düz {int: float} formatını
+    # destekler; {"key_output": {...}} multi-output formatı TypeError verir.
+    return weights
 
 
 # ── Augmentasyon ───────────────────────────────────────────────────────────────
@@ -205,17 +207,27 @@ def augment_fn(chroma, labels):
 # ── tf.data Dataset ────────────────────────────────────────────────────────────
 
 def make_dataset(rows: List[dict], batch_size: int, shuffle: bool,
-                 augment: bool = False) -> tf.data.Dataset:
+                 augment: bool = False,
+                 class_weights: dict = None) -> tf.data.Dataset:
+    """
+    class_weights: {int -> float} — Keras 3.x multi-output modellerinde
+    class_weight parametresi desteklenmediği için sample_weight olarak eklenir.
+    """
     paths    = [get_cache_path(r["path"]) for r in rows]
     key_idxs = [r["key_idx"] for r in rows]
     bpms     = [r["bpm"] for r in rows]
+
+    # Sample weights: her örnek kendi key sınıfının ağırlığını alır
+    use_sw = class_weights is not None
+    sw_list = ([float(class_weights.get(int(k), 1.0)) for k in key_idxs]
+               if use_sw else None)
 
     def load_sample(path_bytes, key_idx, bpm):
         path   = path_bytes.numpy().decode("utf-8")
         chroma = np.load(path).astype(np.float32)
         chroma = chroma[:, :TARGET_LENGTH, np.newaxis]   # (12, 1292, 1)
         key_one_hot = np.zeros(NUM_CLASSES, dtype=np.float32)
-        key_one_hot[key_idx] = 1.0
+        key_one_hot[int(key_idx)] = 1.0
         return chroma, key_one_hot, np.float32(bpm)
 
     def tf_load(path, key_idx, bpm):
@@ -228,12 +240,30 @@ def make_dataset(rows: List[dict], batch_size: int, shuffle: bool,
         bpm_val.set_shape([])
         return chroma, {"key_output": key_oh, "bpm_output": bpm_val}
 
-    ds = tf.data.Dataset.from_tensor_slices((paths, key_idxs, bpms))
-    if shuffle:
-        ds = ds.shuffle(buffer_size=len(rows), reshuffle_each_iteration=True)
-    ds = ds.map(tf_load, num_parallel_calls=tf.data.AUTOTUNE)
-    if augment:
-        ds = ds.map(augment_fn, num_parallel_calls=tf.data.AUTOTUNE)
+    if use_sw:
+        def tf_load_sw(path, key_idx, bpm, sw):
+            feat, labels = tf_load(path, key_idx, bpm)
+            sw.set_shape([])
+            return feat, labels, sw
+
+        def augment_sw(feat, labels, sw):
+            feat, labels = augment_fn(feat, labels)
+            return feat, labels, sw
+
+        ds = tf.data.Dataset.from_tensor_slices((paths, key_idxs, bpms, sw_list))
+        if shuffle:
+            ds = ds.shuffle(buffer_size=len(rows), reshuffle_each_iteration=True)
+        ds = ds.map(tf_load_sw, num_parallel_calls=tf.data.AUTOTUNE)
+        if augment:
+            ds = ds.map(augment_sw, num_parallel_calls=tf.data.AUTOTUNE)
+    else:
+        ds = tf.data.Dataset.from_tensor_slices((paths, key_idxs, bpms))
+        if shuffle:
+            ds = ds.shuffle(buffer_size=len(rows), reshuffle_each_iteration=True)
+        ds = ds.map(tf_load, num_parallel_calls=tf.data.AUTOTUNE)
+        if augment:
+            ds = ds.map(augment_fn, num_parallel_calls=tf.data.AUTOTUNE)
+
     ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     return ds
 
@@ -292,7 +322,7 @@ def main():
     class_weights = compute_class_weights(tr_rows)
 
     # 5) Dataset
-    train_ds = make_dataset(tr_rows,  batch_size=args.batch, shuffle=True,  augment=True)
+    train_ds = make_dataset(tr_rows,  batch_size=args.batch, shuffle=True,  augment=True,  class_weights=class_weights)
     val_ds   = make_dataset(val_rows, batch_size=args.batch, shuffle=False, augment=False)
 
     # 6) Model + Cosine Decay LR
@@ -333,7 +363,6 @@ def main():
         validation_data=val_ds,
         epochs=args.epochs,
         callbacks=callbacks,
-        class_weight=class_weights,
         verbose=1,
     )
 
