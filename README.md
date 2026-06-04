@@ -13,6 +13,32 @@
 
 ---
 
+## Demo — Uygulamadan Ekran Görüntüleri
+
+<table>
+  <tr>
+    <td align="center"><b>CUE AI DJ Asistanı</b><br/><sub>BPM progression + Camelot rozetleri</sub></td>
+    <td align="center"><b>Top 10 — BPM & Key</b><br/><sub>Her parçada otomatik BPM ve Key bilgisi</sub></td>
+    <td align="center"><b>Küratör Playlists</b><br/><sub>Tür bazlı DJ setleri</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/cue_chat.png" width="220"/></td>
+    <td><img src="docs/screenshots/top10.png" width="220"/></td>
+    <td><img src="docs/screenshots/lists.png" width="220"/></td>
+  </tr>
+</table>
+
+> CUE ekranında görülen **BPM:127 / Key:8A** değerleri ve yükselen enerji barı (127→132 BPM),  
+> bu projenin ürettiği verilerle çalışan harmonik sıralama algoritmasının çıktısıdır.
+
+---
+
+## Eğitim Sonuçları (v1 Model)
+
+![Training Curves](results/plots/training_curves.png)
+
+---
+
 ## Proje Özeti
 
 **TrackBang**, iOS ve Android'de yayında olan bir DJ müzik keşif platformudur. Bu proje, TrackBang'e entegre edilmek üzere geliştirilen **yapay zeka destekli ses analiz motorunu** kapsamaktadır.
