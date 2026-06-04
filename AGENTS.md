@@ -449,10 +449,32 @@ val_key_output_accuracy, val_key_output_loss, val_loss
 | Mimari | 3-blok CNN | 4-blok Residual + SE |
 | Filtreler | 32→64→128 | 64→128→256→256 |
 | LR Schedule | Sabit 0.001 | Cosine Decay |
-| Class Weight | Yok | Inverse-frequency |
+| Class Weight | Yok | sample_weight (tf.data) |
 | Augmentation | Time mask + noise | + Frequency mask |
 | Early Stop patience | 15 | 20 |
 | Beklenen val acc | %35.3 (elde) | %45–55 (hedef) |
+
+### v2 Canlı Eğitim İlerlemesi (Haziran 2025)
+
+| Epoch | Val Key Acc | Val BPM MAE | Not |
+|-------|------------|-------------|-----|
+| 1/120 | %2.7 | 0.192 | başlangıç |
+| 3/120 | %14.0 | 0.167 | hızlı öğrenme |
+| 6/120 | %16.7 | 0.062 | BPM stabilize |
+| **7/120** | **%22.5** | **0.119** | **en iyi checkpoint** |
+| 8–120 | devam ediyor | — | ~17 saat kaldı |
+
+> **Önemli Not (Keras 3.x class_weight fix):**  
+> Keras 3.x `class_weight` parametresini multi-output modellerde desteklemez.
+> Fix: `class_weight` → `sample_weight` olarak `tf.data.Dataset`'in 3. elemanına gömüldü:
+> ```python
+> # Eski (hata veriyor — Keras 3.x'te çalışmaz):
+> model.fit(..., class_weight={"key_output": weights})
+>
+> # Yeni (çalışıyor):
+> dataset = tf.data.Dataset.from_tensor_slices((X, y, sample_weights))
+> model.fit(dataset)  # class_weight parametresi yok
+> ```
 
 ---
 
