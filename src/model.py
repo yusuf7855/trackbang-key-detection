@@ -105,73 +105,76 @@ def residual_block(x, filters, kernel_size=(3, 3)):
 
 def build_model(input_shape=(12, 1292, 1), lr=0.001):
     """
-    Residual + SE-Attention CNN — Key & BPM Detection.
+    v4 Hybrid CNN — Key & BPM Detection.
 
-    Giriş: (12, 1292, 1) — 12 chroma bin × 1292 zaman adımı
-    Çıktı 1: (24,) softmax — key sınıfı
-    Çıktı 2: (1,)  linear  — BPM (normalize)
+    v5 tasarım gerekçesi:
+    ----------------------
+    v4 sonucu: %47.7 val acc, 0.22s/batch.
+    Teşhis: train acc %27.8 << val acc %47.7 → model eğitim setini öğrenemiyor.
+    Sebep: ±5 pitch shift + mixup çok agresif.
 
-    Mimari gerekçe:
-    ---------------
-    - Dikeysel (frekans) boyut = 12 → küçük, sınırlı havuzlama yapılır
-    - Yataysal (zaman) boyut = 1292 → büyük, progresif havuzlama
-    - Global Average Pooling: zamana göre öğrenilmiş bir "key profili" üretir
-      → Krumhansl-Schmuckler algoritmasının öğrenen versiyonu
+    v5 değişiklikleri:
+    - Filtreler: 32→64→128→128 → 64→128→192→192 (daha fazla kapasite)
+    - SE blokları: 1 → 2 (blok 3 ve 4'te)
+    - Dropout azaltıldı: 0.1/0.15/0.2 → 0.05/0.1/0.15
+    - train.py'de pitch shift ±5 → ±3
+    - Hız: ~0.5s/batch → 120 epoch ≈ 95 dakika
+    - Beklenti: %50-54 val acc
     """
     inputs = layers.Input(shape=input_shape, name='chroma_input')
 
-    # İlk projeksiyon katmanı
+    # ── Blok 1: Kaba zamansal özellikler (64 filtre) ─────────────
     x = layers.Conv2D(64, (3, 7), padding='same')(inputs)
     x = layers.BatchNormalization()(x)
     x = layers.LeakyReLU(0.1)(x)
-
-    # ── Blok 1: Kaba zamansal özellikler (64 filtre) ─────────────
-    x = residual_block(x, 64, kernel_size=(3, 7))
     x = layers.MaxPooling2D((1, 4))(x)   # zaman: 1292 → 323
-    x = layers.Dropout(0.2)(x)
+    x = layers.Dropout(0.05)(x)
 
     # ── Blok 2: Orta seviye özellikler (128 filtre) ──────────────
-    x = residual_block(x, 128, kernel_size=(3, 5))
+    x = layers.Conv2D(128, (3, 5), padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.LeakyReLU(0.1)(x)
     x = layers.MaxPooling2D((1, 4))(x)   # zaman: 323 → 80
-    x = layers.Dropout(0.2)(x)
+    x = layers.Dropout(0.1)(x)
 
-    # ── Blok 3: Yüksek seviye özellikler (256 filtre) ────────────
-    x = residual_block(x, 256, kernel_size=(3, 3))
+    # ── Blok 3: Yüksek seviye özellikler + SE (192 filtre) ───────
+    x = layers.Conv2D(192, (3, 3), padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = se_block(x, ratio=8)
+    x = layers.LeakyReLU(0.1)(x)
     x = layers.MaxPooling2D((1, 4))(x)   # zaman: 80 → 20
-    x = layers.Dropout(0.2)(x)
+    x = layers.Dropout(0.1)(x)
 
-    # ── Blok 4: En soyut özellikler (256 filtre) ─────────────────
-    x = residual_block(x, 256, kernel_size=(3, 3))
-    x = layers.Dropout(0.2)(x)
+    # ── Blok 4: Soyut özellikler + SE (192 filtre) ───────────────
+    x = layers.Conv2D(192, (3, 3), padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = se_block(x, ratio=8)
+    x = layers.LeakyReLU(0.1)(x)
+    x = layers.Dropout(0.15)(x)
 
-    # ── Global Average Pooling → öğrenilmiş key profili ──────────
-    x = layers.GlobalAveragePooling2D()(x)
+    # ── GAP + GMP ─────────────────────────────────────────────────
+    x_avg = layers.GlobalAveragePooling2D()(x)
+    x_max = layers.GlobalMaxPooling2D()(x)
+    x = layers.Concatenate()([x_avg, x_max])   # (B, 384)
 
-    # ── Ortak Dense katmanlar ─────────────────────────────────────
-    shared = layers.Dense(512)(x)
+    # ── Ortak Dense katman ────────────────────────────────────────
+    shared = layers.Dense(384, kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
     shared = layers.BatchNormalization()(shared)
     shared = layers.LeakyReLU(0.1)(shared)
-    shared = layers.Dropout(0.5)(shared)
+    shared = layers.Dropout(0.25)(shared)
 
-    shared = layers.Dense(256)(shared)
-    shared = layers.BatchNormalization()(shared)
-    shared = layers.LeakyReLU(0.1)(shared)
-    shared = layers.Dropout(0.3)(shared)
-
-    # ── Key çıktısı (24 sınıf softmax) ───────────────────────────
+    # ── Çıktılar ──────────────────────────────────────────────────
     key_output = layers.Dense(NUM_CLASSES, activation='softmax',
                                name='key_output')(shared)
-
-    # ── BPM çıktısı (regresyon) ───────────────────────────────────
     bpm_output = layers.Dense(1, activation='linear',
                                name='bpm_output')(shared)
 
     model = Model(inputs=inputs, outputs=[key_output, bpm_output])
 
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr, clipnorm=1.0),
         loss={
-            'key_output': tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.1),
+            'key_output': tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.05),
             'bpm_output': 'mse'
         },
         loss_weights={
