@@ -39,10 +39,10 @@
 ```
 trackbang-key-detection/
 ├── src/
-│   ├── model.py              — CNN mimarisi (build_model fonksiyonu)
+│   ├── model.py              — CNN mimarisi + GAP/GMP paralel dallar (build_model fonksiyonu)
 │   ├── feature_extraction.py — MP3 → Chroma CENS dönüşümü (HPSS dahil)
 │   ├── train.py              — Eğitim loop'u (tf.data, augment, class weights)
-│   ├── predict.py            — Inference: predict(mp3_path) → dict
+│   ├── predict.py            — Inference + TTA: predict(mp3_path) → dict
 │   ├── api.py                — FastAPI: POST /predict, GET /health
 │   ├── build_dataset.py      — Veri toplama: MongoDB + SoundCloud → MP3 + labels.csv
 │   ├── scraper.py            — Ek veri scraper
@@ -54,21 +54,32 @@ trackbang-key-detection/
 │   └── processed/cache/      — 3.817 .npy dosyası (12×1292 float32 Chroma CENS)
 │
 ├── models/
-│   ├── key_detection_model.keras   — TF native format, aktif kullanılan
-│   └── key_detection_model.h5      — HDF5 format, legacy uyumluluk
+│   └── key_detection_v4_best.keras  — v4 Hibrit CNN, aktif model (858K parametre)
 │
 ├── results/
-│   └── training_log.csv      — epoch, loss, accuracy, mae, lr kolonları
+│   ├── training_log.csv      — epoch, loss, accuracy, mae, lr kolonları
+│   └── plots/                — Eğitim grafikleri (training_curves.png)
 │
-├── AGENTS.md                 — Bu dosya
+├── docs/
+│   ├── idea.md               — Proje fikri ve motivasyon
+│   ├── proje_metni.md        — Resmi proje metni (öğrenci/danışman bilgisi)
+│   ├── WALKTHROUGH.md        — Adım adım proje rehberi (yeni gelenlere)
+│   └── screenshots/          — Uygulama ekran görüntüleri
+│
+├── future_work/
+│   └── TODO.md               — Gelecek çalışmalar, bilinen hatalar, katkı rehberi
+│
+├── AGENTS.md                 — Bu dosya (teknik referans)
 ├── README.md                 — Kullanıcı/geliştirici belgesi
+├── CHANGELOG.md              — Versiyon geçmişi (v1 → v4)
+├── INSTALLATION.md           — Kurulum, çalıştırma ve troubleshooting rehberi
 ├── requirements.txt          — Python bağımlılıkları
 └── generate_report.py        — python-docx ile Word raporu üretir
 ```
 
 ---
 
-## 3. Model Mimarisi (v2 — Güncel)
+## 3. Model Mimarisi (v4 — Güncel)
 
 ### Dosya: `src/model.py`
 
@@ -80,7 +91,7 @@ trackbang-key-detection/
 - `key_output`: `(batch, 24)` — softmax olasılıkları
 - `bpm_output`: `(batch, 1)` — normalize BPM (bpm/200.0)
 
-### Katman Akışı
+### Katman Akışı (v4 — Hibrit GAP+GMP)
 
 ```python
 Input(12, 1292, 1)
@@ -96,12 +107,15 @@ Input(12, 1292, 1)
   → Dropout(0.2)
   → ResidualBlock(256, 3×3) + SE_Block(ratio=8)
   → Dropout(0.2)
-  → GlobalAveragePooling2D()   # (batch, 256)
-  → Dense(512) + BN + LeakyReLU + Dropout(0.5)
-  → Dense(256) + BN + LeakyReLU + Dropout(0.3)
+  ├→ GlobalAveragePooling2D()   # (batch, 256) — ortalama aktivasyon
+  └→ GlobalMaxPooling2D()       # (batch, 256) — zirve aktivasyon
+  → Concatenate()               # (batch, 512)
+  → Dense(256) + BN + LeakyReLU + Dropout(0.4)
   ├→ Dense(24, softmax)   [key_output]
   └→ Dense(1, linear)     [bpm_output]
 ```
+
+**TTA (Test-Time Augmentation):** Tahmin sırasında aynı parça 5 farklı augmentasyonla işlenir, softmax olasılıkları ortalaması alınır. Bu ~2–3% val accuracy artışı sağlar.
 
 ### SE Block (Squeeze-and-Excitation)
 
@@ -143,9 +157,10 @@ Total Loss = 1.0 × CategoricalCrossentropy(key, label_smoothing=0.1)
 Key accuracy'ye odaklanmak için BPM ağırlığı düşük tutulmuştur (0.05).
 
 ### Parametre Sayısı
-- **Toplam:** ~2.97M parametre
-- **Eğitilebilir:** ~2.96M parametre
-- **Model boyutu:** ~11 MB (TF native), ~4.4 MB (H5)
+- **Toplam:** 858.009 parametre
+- **Eğitilebilir:** 858.009 parametre
+- **Model boyutu:** ~3.5 MB (TF native Keras)
+- **Model dosyası:** `models/key_detection_v4_best.keras`
 
 ### KEY_CLASSES Sıralaması
 ```python
@@ -253,8 +268,8 @@ Bu, gerçekçi doğrulama skoru elde etmek için kritiktir.
 
 ```python
 def augment_fn(chroma, labels):
-    # 1. Pitch shift: ±5 semitone
-    semitone = tf.random.uniform([], -5, 6, tf.int32)
+    # 1. Pitch shift: ±3 semitone
+    semitone = tf.random.uniform([], -3, 4, tf.int32)
     chroma   = tf.roll(chroma, semitone, axis=0)
     # Etiket güncelle: 1 semitone = 2 index
     new_key_idx = (key_idx + semitone * 2) % 24
@@ -302,18 +317,18 @@ EarlyStopping(monitor="val_key_output_accuracy", patience=20)
 CSVLogger("results/training_log.csv")
 ```
 
-### Beklenen Eğitim Çıktısı
+### Beklenen Eğitim Çıktısı (v4)
 
 ```
 Epoch 1/120
 ... - key_output_accuracy: 0.06 - val_key_output_accuracy: 0.05
 ...
-Epoch 39/120
-... - key_output_accuracy: 0.31 - val_key_output_accuracy: 0.35
-Epoch 40/120 — EarlyStopping triggered (v1)
+Epoch 55/120
+... - key_output_accuracy: 0.45 - val_key_output_accuracy: 0.47
+...
+Epoch 75/120 — EarlyStopping triggered (patience=20)
+Best val_key_output_accuracy: 0.477
 ```
-
-v2 hedefi: val_key_output_accuracy > 0.45
 
 ---
 
@@ -425,7 +440,7 @@ song_id | filename | musical_key | bpm | camelot | energy
 
 ---
 
-## 9. Eğitim Sonuçları (v1)
+## 9. Eğitim Sonuçları
 
 ### results/training_log.csv Formatı
 ```
@@ -435,34 +450,21 @@ val_bpm_output_loss, val_bpm_output_mae,
 val_key_output_accuracy, val_key_output_loss, val_loss
 ```
 
-### v1 Sonuç Özeti
-- **Epoch sayısı:** 39 (early stopping, patience=15)
-- **En iyi val_key_output_accuracy:** 0.353 (Epoch 38)
-- **En iyi val_bpm_output_mae:** ~0.0135 (× 200 = ~2.7 BPM)
-- **Öğrenme hızı:** 0.001 (sabit kaldı, ReduceLROnPlateau tetiklenmedi)
+### v4 Sonuç Özeti (Güncel)
+- **Epoch sayısı:** 75 (early stopping, patience=20)
+- **En iyi val_key_output_accuracy:** 0.477 (24 sınıf)
+- **En iyi val_bpm_output_mae:** ~0.0095 (× 200 = ~1.9 BPM)
+- **Parametre sayısı:** 858.009
+- **Rastgele baseline:** %4.2 → model **11× daha iyi**
 
-### v1 → v2 Karşılaştırması
+### Versiyon Karşılaştırması
 
-| Değişiklik | v1 | v2 |
-|------------|----|----|
-| Feature | Chroma CENS | Chroma CENS + HPSS |
-| Mimari | 3-blok CNN | 4-blok Residual + SE |
-| Filtreler | 32→64→128 | 64→128→256→256 |
-| LR Schedule | Sabit 0.001 | Cosine Decay |
-| Class Weight | Yok | sample_weight (tf.data) |
-| Augmentation | Time mask + noise | + Frequency mask |
-| Early Stop patience | 15 | 20 |
-| Beklenen val acc | %35.3 (elde) | %45–55 (hedef) |
-
-### v2 Canlı Eğitim İlerlemesi (Haziran 2025)
-
-| Epoch | Val Key Acc | Val BPM MAE | Not |
-|-------|------------|-------------|-----|
-| 1/120 | %2.7 | 0.192 | başlangıç |
-| 3/120 | %14.0 | 0.167 | hızlı öğrenme |
-| 6/120 | %16.7 | 0.062 | BPM stabilize |
-| **7/120** | **%22.5** | **0.119** | **en iyi checkpoint** |
-| 8–120 | devam ediyor | — | ~17 saat kaldı |
+| Versiyon | Mimari | Val Key Acc | Val BPM MAE | Not |
+|----------|--------|-------------|-------------|-----|
+| v1 | 3-blok CNN | %35.3 | ~2.7 BPM | İlk çalışan model |
+| v2 | Residual + SE | ~%40 | ~2.2 BPM | HPSS eklendi |
+| v3 | Dual-branch | — | — | Başarısız, overfitting |
+| **v4** | **Hibrit GAP+GMP + TTA** | **%47.7** | **~1.9 BPM** | **Aktif model** |
 
 > **Önemli Not (Keras 3.x class_weight fix):**  
 > Keras 3.x `class_weight` parametresini multi-output modellerde desteklemez.

@@ -33,9 +33,16 @@
 
 ---
 
-## Eğitim Sonuçları (v1 Model)
+## Eğitim Sonuçları (v4 Model — Güncel)
 
 ![Training Curves](results/plots/training_curves.png)
+
+| Metrik | v1 | v4 (Güncel) |
+|--------|-----|-------------|
+| Val Key Accuracy | %35.3 | **%47.7** |
+| Val BPM MAE | ~2.7 BPM | **~1.9 BPM** |
+| Epoch | 39 | 75 |
+| Parametre | ~2.97M | **858K** |
 
 ---
 
@@ -123,7 +130,7 @@ Kasım 2024'te **Spotify Audio Features API'sini** (BPM, key, energy) kullanımd
 
 ---
 
-## Mimari
+## Mimari (v4 — Hibrit CNN)
 
 ```
 MP3 (30 sn)
@@ -135,22 +142,28 @@ MP3 (30 sn)
 [Chroma CENS — (12 × 1292)]
     │
     ▼
-┌──────────────────────────────────────┐
-│     Residual CNN + SE Attention      │
-│                                      │
-│  Conv(64,3×7) → ResBlock(64)         │
-│  MaxPool(1×4)                        │
-│  ResBlock(128) → MaxPool(1×4)        │
-│  ResBlock(256) → MaxPool(1×4)        │
-│  ResBlock(256)                       │
-│  GlobalAveragePooling                │
-│  Dense(512) → Dense(256)             │
-│       │              │               │
-│  Key Output(24)  BPM Output(1)       │
-└──────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│     Hibrit Residual CNN + SE Attention   │
+│                                          │
+│  Conv(64,3×7) → ResBlock(64)+SE          │
+│  MaxPool(1×4)                            │
+│  ResBlock(128)+SE → MaxPool(1×4)         │
+│  ResBlock(256)+SE → MaxPool(1×4)         │
+│  ResBlock(256)+SE                        │
+│           │                              │
+│    ┌──────┴──────┐                       │
+│   GAP           GMP   ← paralel dallar  │
+│    └──────┬──────┘                       │
+│        Concat                            │
+│      Dense(256)                          │
+│       │        │                         │
+│  Key(24,softmax)  BPM(1,linear)          │
+└──────────────────────────────────────────┘
     │                  │
     ▼                  ▼
 "A Minor / 8A"      123.5 BPM
+
++ Test-Time Augmentation (TTA): 5 tahmin ortalaması
 ```
 
 ### Squeeze-and-Excitation (SE) Attention
@@ -201,29 +214,26 @@ C# Minör   █████            83
 
 ---
 
-## Sonuçlar (v1 Model)
+## Sonuçlar (v4 Model — Güncel)
 
 | Metrik | Değer |
 |--------|-------|
-| Validation Key Accuracy | **%35.3** (24 sınıf) |
-| Validation BPM MAE | **~2.7 BPM** |
-| Eğitim epoch sayısı | 39 (early stopping) |
-| Model boyutu | 4.4 MB |
+| Validation Key Accuracy | **%47.7** (24 sınıf) |
+| Validation BPM MAE | **~1.9 BPM** |
+| Eğitim epoch sayısı | 75 (early stopping, patience=20) |
+| Parametre sayısı | 858.009 |
 | Rastgele tahmin baseline | %4.2 |
 
-> v2 model eğitimi aktif olarak devam etmektedir (Haziran 2025).
+### Versiyon Karşılaştırması
 
-### v2 Eğitim İlerlemesi (Canlı)
+| Versiyon | Mimari | Val Key Acc | Val BPM MAE |
+|----------|--------|-------------|-------------|
+| v1 | 3-blok CNN | %35.3 | ~2.7 BPM |
+| v2 | Residual + SE | ~%40 | ~2.2 BPM |
+| v3 | Dual-branch (başarısız) | — | — |
+| **v4** | **Hibrit GAP+GMP + TTA** | **%47.7** | **~1.9 BPM** |
 
-| Epoch | Val Key Acc | Val BPM MAE | Durum |
-|-------|------------|-------------|-------|
-| 1/120 | %2.7 | 0.192 BPM | ✓ |
-| 3/120 | %14.0 | 0.167 BPM | ✓ |
-| 6/120 | %16.7 | 0.062 BPM | ✓ |
-| **7/120** | **%22.5** | **0.119 BPM** | **✓ En iyi** |
-| 8–120 | devam ediyor… | — | 🔄 |
-
-> Hedef: **%45–55** key accuracy. BPM tarafı çok erken olgunlaştı (0.062 MAE ≈ ±4 BPM hassasiyet).
+> Rastgele tahmine (%4.2) göre **11× daha iyi** performans.
 
 ---
 
@@ -246,7 +256,7 @@ C# Minör   █████            83
 
 | Teknik | Parametre | Açıklama |
 |--------|-----------|----------|
-| Pitch Shift | ±5 yarım ton | `np.roll(chroma, n, axis=0)` — chroma'da matematiksel olarak TAM doğru |
+| Pitch Shift | ±3 yarım ton | `np.roll(chroma, n, axis=0)` — chroma'da matematiksel olarak TAM doğru |
 | Time Masking | 0–100 frame | SpecAugment — kısa sessizliklere dayanıklılık |
 | Frequency Masking | 0–3 bin | Eksik nota sınıflarına dayanıklılık |
 | Gaussian Gürültü | stddev=0.02 | Kayıt kalitesi farklılıkları |
@@ -342,10 +352,10 @@ Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
 trackbang-key-detection/
 │
 ├── src/
-│   ├── model.py              # Residual CNN + SE Attention mimarisi
+│   ├── model.py              # Residual CNN + SE Attention + GAP/GMP mimarisi
 │   ├── feature_extraction.py # MP3 → HPSS → Chroma CENS → .npy
 │   ├── train.py              # Eğitim pipeline (tf.data, augment, class weights)
-│   ├── predict.py            # Tek dosya tahmini
+│   ├── predict.py            # Tek dosya tahmini + TTA
 │   ├── api.py                # FastAPI REST endpoint
 │   └── build_dataset.py      # MongoDB + SoundCloud veri toplama
 │
@@ -354,21 +364,32 @@ trackbang-key-detection/
 │   └── processed/cache/      # Chroma CENS .npy cache (3.817 dosya)
 │
 ├── models/
-│   ├── key_detection_model.keras   # Keras format (aktif)
-│   └── key_detection_model.h5      # HDF5 format (uyumluluk)
+│   └── key_detection_v4_best.keras  # v4 Hibrit CNN (aktif model)
 │
 ├── results/
-│   └── training_log.csv      # Epoch bazlı metrikler
+│   ├── training_log.csv      # Epoch bazlı metrikler
+│   └── plots/                # Eğitim grafikleri
+│
+├── docs/
+│   ├── idea.md               # Proje fikri ve motivasyon
+│   ├── proje_metni.md        # Resmi proje metni (öğrenci/danışman bilgisi)
+│   ├── WALKTHROUGH.md        # Adım adım proje rehberi
+│   └── screenshots/          # Uygulama ekran görüntüleri
+│
+├── future_work/
+│   └── TODO.md               # Gelecek çalışmalar ve açık görevler
 │
 ├── generate_report.py        # Word raporu üretici
 ├── requirements.txt
+├── CHANGELOG.md              # Versiyon geçmişi (v1 → v4)
+├── INSTALLATION.md           # Kurulum ve çalıştırma rehberi
 ├── AGENTS.md                 # Teknik detaylar (AI/geliştirici referansı)
 └── README.md
 ```
 
 ---
 
-## Eğitim Hiperparametreleri (v2)
+## Eğitim Hiperparametreleri (v4)
 
 | Parametre | Değer |
 |-----------|-------|
