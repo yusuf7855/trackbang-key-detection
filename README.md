@@ -13,6 +13,12 @@
 
 ---
 
+## Tanıtım Videosu
+
+[![TrackBang Tanıtım Videosu](https://img.youtube.com/vi/XEjk17cB4ME/maxresdefault.jpg)](https://youtube.com/shorts/XEjk17cB4ME)
+
+---
+
 ## Demo — Uygulamadan Ekran Görüntüleri
 
 <table>
