@@ -35,6 +35,15 @@ Bu belge, projeyi devralacak geliştirici veya araştırmacıya yol göstermek i
 
 ---
 
+## Enterprise Mekan Ses Platformu — Araştırma Fikri
+> ⏰ **Deadline: 12.06.2026 15:00** — Hoca (seyyah) tarafından eklendi
+
+- [ ] **Enterprise mekan ses fikri genişletme:** `docs/enterprise_idea.md` belgesini geliştirmeye devam et. Hedef: AI ile üretilen + harmonik sıralanan arka plan müziği platformu için özgün araştırma soruları ve pilot senaryo.
+- [ ] **Pilot mekan testi:** En az 1 mekan segmenti (kafe/restoran) için somut teknik + iş modeli planı çıkar.
+- [ ] **Lisans çözümü araştırması:** AI üretimli müziğin MESAM/MÜ-YAP karşısındaki hukuki durumunu netleştir.
+
+---
+
 ## Uzun Vadeli — Araştırma
 
 ### Yeni Özellik Uzayları
