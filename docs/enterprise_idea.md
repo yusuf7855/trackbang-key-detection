@@ -500,5 +500,228 @@ Zorluklar konusunda dürüst olmak istiyorum çünkü gerçekçilik olmadan iyim
 
 ---
 
+---
+
+## 12. Pilot Mekan Senaryosu: Tek Kafe — Uçtan Uca Somut Plan
+
+> Bu bölüm, yukarıdaki mimari ve iş modelini **gerçek bir mekana** uygulandığında nasıl görüneceğini somutlaştırır. Varsayımsal ama gerçekçi bir örnek üzerinden yürütülmektedir.
+
+### 12.1 Mekan Profili
+
+| Alan | Değer |
+|------|-------|
+| **Mekan adı** | Frekans Kafe (varsayımsal) |
+| **Konum** | Kadıköy, İstanbul |
+| **Alan** | ~80 m², 30 oturma kapasitesi |
+| **Açılış saatleri** | 08:00 – 23:00 (15 saat/gün) |
+| **Müşteri profili** | 22–35 yaş, üniversite mezunu, freelancer/öğrenci ağırlıklı |
+| **Mevcut müzik** | Spotify (yasadışı ticari kullanım) |
+| **Mevcut ses sistemi** | 2× pasif hoparlör + mixer amplifikatör, 3.5mm/Bluetooth girişi var |
+| **İnternet** | 50 Mbps fiber, ara sıra kesinti |
+| **Teknik yetkinlik** | Düşük — sahibi yazılım bilmiyor |
+
+**Mekan Profili JSON:**
+```json
+{
+  "mekan": {
+    "tur": "kafe",
+    "marka_seviyesi": "orta",
+    "birincil_yas_araligi": "22-35",
+    "tema": "sade minimalist, çalışma dostu"
+  },
+  "program": {
+    "acilis": "08:00",
+    "kapanis": "23:00",
+    "yogun_saatler": ["09:00-11:00", "14:00-17:00"],
+    "enerji_egrisi": "sabah_sakin → oglen_orta → aksam_pik"
+  },
+  "muzik_tercihleri": {
+    "turler": ["lo-fi hip hop", "deep house", "akustik pop", "chill electronic"],
+    "haric_turler": ["metal", "arabesk", "yüksek enerjili EDM"],
+    "bpm_araligi": [75, 118],
+    "dil_tercihi": "enstrumantal"
+  },
+  "marka": {
+    "jingle_aktif": false,
+    "anons_slotlari": [],
+    "ozel_ses_id": null
+  }
+}
+```
+
+---
+
+### 12.2 Teknik Kurulum
+
+#### Donanım (Tek Seferlik)
+
+| Bileşen | Model / Açıklama | Maliyet |
+|---------|-----------------|---------|
+| Mini bilgisayar | Raspberry Pi 5 (8GB RAM) | ₺1.850 |
+| Depolama | 128GB microSD (Class 10) | ₺180 |
+| Ses çıkışı | USB DAC (3.5mm stereo çıkış) | ₺320 |
+| Kasa + soğutucu | Aluminyum kasa + fan | ₺250 |
+| Güç adaptörü | 27W USB-C | ₺120 |
+| **Toplam donanım** | | **₺2.720** |
+
+> **Alternatif:** Mekanda Wi-Fi üzerinden akış yeterli ise sadece tarayıcı tabanlı web player kullanılır — sıfır donanım maliyeti. Raspberry Pi yalnızca çevrimdışı güvenilirlik için gerekli.
+
+#### Yazılım Yığını (Raspberry Pi üzerinde)
+
+```
+┌─────────────────────────────────────────────────┐
+│              Raspberry Pi 5 OS (Lite)            │
+│                                                 │
+│  ┌──────────────────────────────────────────┐   │
+│  │         TrackBang Player Servisi          │   │
+│  │  - Python 3.11 + FastAPI (yerel sunucu)  │   │
+│  │  - VLC (ses çıkışı motoru)               │   │
+│  │  - SQLite (yerel playlist cache)         │   │
+│  │  - 12 saatlik müzik buffer (SD kart)     │   │
+│  └──────────────────────────────────────────┘   │
+│                    │                            │
+│         ┌──────────▼──────────┐                 │
+│         │  Bulut Senkronizasyon│                 │
+│         │  - Gece 02:00'da     │                 │
+│         │    yeni set indir    │                 │
+│         │  - TrackBang API →   │                 │
+│         │    günlük playlist   │                 │
+│         └─────────────────────┘                 │
+└─────────────────────────────────────────────────┘
+         │ 3.5mm stereo
+         ▼
+  [Mixer Amplifikatör] → [Hoparlörler]
+```
+
+#### Kurulum Adımları (Teknisyen 1 Ziyaret, ~2 Saat)
+
+```
+1. Raspberry Pi imajını yaz (önceden hazırlanmış, 10 dk)
+2. Wi-Fi şifresi gir, cihazı internete bağla (5 dk)
+3. TrackBang sunucusuna cihaz kaydı (QR kod tara, 2 dk)
+4. Mekan profilini web panelden doldur (10 dk)
+5. 3.5mm kabloyu mevcut amplifikatöre bağla (5 dk)
+6. İlk playlist'i çek ve test et (10 dk)
+7. Sahibine 3 şeyi öğret:
+   - Ses seviyesi nasıl ayarlanır (fiziksel knob)
+   - Müzik durdu mu? → cihazı yeniden başlat (1 buton)
+   - Sorun olursa WhatsApp destek hattı
+```
+
+---
+
+### 12.3 Günlük Müzik Programı
+
+Mekan profiline göre sistem **3 farklı enerji bloğu** üretir:
+
+| Saat Dilimi | BPM Aralığı | Ton Modu | Tür | Atmosfer |
+|-------------|-------------|----------|-----|----------|
+| 08:00 – 11:00 | 72–88 BPM | Majör | Lo-fi, akustik | Sakin, konsantre |
+| 11:00 – 17:00 | 88–105 BPM | Karma | Chillout, deep house | Orta enerji |
+| 17:00 – 23:00 | 100–118 BPM | Minör ağırlıklı | Melodic house, chill electronic | Sosyal, akşam |
+
+**Harmonik geçiş örneği (akşam bloğu):**
+```
+Parça 1:  8A  — 104 BPM  (Am)
+Parça 2:  9A  — 106 BPM  (Em)   ← Camelot +1 adım ✓
+Parça 3:  9A  — 108 BPM  (Em)   ← Aynı ton, BPM artışı ✓
+Parça 4:  10A — 108 BPM  (Bm)   ← Camelot +1 adım ✓
+Parça 5:  10B — 110 BPM  (D)    ← İç→Dış halka ✓
+```
+Her geçiş 8 bar (≈15 saniye) crossfade ile yumuşatılır.
+
+---
+
+### 12.4 Maliyet – Gelir Analizi
+
+#### Kurulum Maliyeti (Tek Seferlik)
+
+| Kalem | Maliyet |
+|-------|---------|
+| Donanım (Raspberry Pi seti) | ₺2.720 |
+| Teknisyen kurulum ziyareti (2 saat) | ₺500 |
+| İlk müzik kütüphanesi üretimi (AI, ~500 parça) | ₺300 (bulut GPU) |
+| **Toplam kurulum** | **₺3.520** |
+
+#### Aylık Gider (TrackBang Tarafı)
+
+| Kalem | Maliyet/ay |
+|-------|-----------|
+| Bulut sunucu payı (1 mekan) | ₺45 |
+| AI müzik üretimi (aylık ~50 yeni parça) | ₺30 |
+| Destek & bakım payı | ₺25 |
+| **Toplam aylık gider** | **₺100** |
+
+#### Gelir ve Karlılık
+
+| Metrik | Değer |
+|--------|-------|
+| Aylık abonelik geliri | ₺399 |
+| Aylık gider | ₺100 |
+| **Brüt kar (aylık)** | **₺299 (%75 marj)** |
+| Donanım geri ödeme süresi | ~12 ay (donanımı müşteri öder) |
+| Abonelik geri ödeme süresi | **1 ay** |
+
+> **Müşteri için karşılaştırma:**
+> - Mevcut durum: Spotify Premium ₺149/ay (yasadışı ticari kullanım) + MESAM ceza riski (₺5.000–₺50.000)
+> - TrackBang: ₺399/ay — tamamen yasal, daha iyi ses deneyimi, sıfır ceza riski
+
+---
+
+### 12.5 Pilot Başarı Kriterleri
+
+**Teknik (1. Ay Sonu)**
+- [ ] Sistem 30 gün boyunca kesintisiz çalıştı (uptime ≥ %98)
+- [ ] Hiçbir müşteri şikayeti müzikle ilgili değildi
+- [ ] İnternet kesintisinde çevrimdışı mod 4+ saat sorunsuz çalıştı
+- [ ] Günlük enerji eğrisi program saatlerine %95 uydu
+
+**İş (3. Ay Sonu)**
+- [ ] Mekan sahibi aboneliği yeniledi (churn = 0)
+- [ ] En az 1 referans müşteri getirdi
+- [ ] Net Promoter Score (tek soruluk anket): ≥ 8/10
+- [ ] "Müzik hakkında şikayetiniz azaldı mı?" → Evet
+
+**Araştırma (3. Ay Sonu, Opsiyonel)**
+- [ ] A/B haftaları karşılaştırması: TrackBang haftası vs. rastgele playlist haftası
+- [ ] Kasa verisi: ortalama sipariş tutarı, mekanda kalma süresi
+- [ ] Bu veri S1 araştırma sorusuna (Bölüm 7) ilk kanıtı sağlar
+
+---
+
+### 12.6 Risk ve Azaltma
+
+| Risk | Olasılık | Etki | Azaltma |
+|------|----------|------|---------|
+| İnternet kesintisi | Orta | Yüksek | Raspberry Pi'da 12 saatlik yerel buffer |
+| Mekan sahibi müziği beğenmedi | Orta | Yüksek | Profil anketi + 7 günlük ücretsiz ince ayar süreci |
+| Ses sistemi uyumsuzluğu | Düşük | Orta | Kurulum öncesi 3.5mm / Bluetooth uyumluluk kontrolü |
+| Raspberry Pi arızası | Düşük | Yüksek | Web player yedek mod (sadece tarayıcı + internet) |
+| Müzik tekrarı şikayeti | Orta | Orta | Aylık 50 yeni parça ekleme, 30 günlük rotasyon havuzu |
+
+---
+
+### 12.7 Ölçekleme: 1 Mekandan 50 Mekana
+
+Kadıköy pilot başarılı olursa aynı süreç şablon haline gelir:
+
+```
+1 Mekan (Ay 1-3):   Teknik doğrulama
+      ↓
+5 Mekan (Ay 4-6):   Operasyonel doğrulama (kurulum + destek ölçeği)
+      ↓
+20 Mekan (Ay 7-12): Birim ekonomisi doğrulama (CAC, LTV, churn)
+      ↓
+50 Mekan (Ay 13+):  Büyüme modu — referal kanalı + dijital pazarlama
+```
+
+**50 mekana ulaşıldığında:**
+- Aylık Tekrarlayan Gelir (MRR): 50 × ₺399 = **₺19.950/ay**
+- Aylık toplam gider: 50 × ₺100 = ₺5.000
+- **Net kar: ₺14.950/ay (%75 marj)**
+- 1 tam zamanlı teknik destek personeli karşılanabilir seviye
+
+---
+
 *Bu belge yaşayan bir araştırma notudur. Son güncelleme: Haziran 2026.*  
 *Sonraki gözden geçirme: MVP ilk 5 beta mekanda konuşlandırıldığında.*
